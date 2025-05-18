@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Message</title>
+    <style>
+        body {
+            background-color: #fff8e1; /* Light Yellow */
+            font-family: Arial, sans-serif;
+            text-align: center;
+            padding: 20px;
+        }
+        p {
+            font-size: 18px;
+            padding: 10px;
+        }
+        strong {
+            color: red;
+        }
+        .file-link {
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h2>Your Message:</h2>
+    <p>{{ message }}</p>
+
+    {% if filename %}
+    <div class="file-link">
+        <h3>Attached File:</h3>
+        <a href="{{ url_for('uploaded_file', filename=filename) }}" target="_blank">{{ filename }}</a>
+    </div>
+    {% endif %}
+
+    {% if ip_address and access_time %}
+    <p><strong>Accessed from IP:</strong> {{ ip_address }}</p>
+    <p><strong>Accessed on:</strong> {{ access_time }}</p>
+    {% endif %}
+
+    {% if self_destruct %}
+    <p><strong>Warning:</strong> This message has now been deleted and cannot be accessed again.</p>
+    {% endif %}
+</body>
+</html>

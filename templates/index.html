@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Secure QR Messaging</title>
+    <style>
+        body {
+            background-color: #e0e7ff; /* Richer light blue */
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            text-align: center;
+            padding: 20px;
+        }
+        h2 {
+            color: #222;
+            margin-bottom: 30px;
+        }
+        textarea, input {
+            width: 60%;
+            padding: 8px; /* reverted to original size */
+            margin: 10px 0;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+            font-size: 14px;
+        }
+        button {
+            background-color: #4f46e5; /* Indigo */
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 15px;
+        }
+        button:hover {
+            background-color: #4338ca;
+        }
+        label {
+            font-weight: bold;
+            display: block;
+            margin-top: 12px;
+        }
+    </style>
+</head>
+<body>
+    <h2>Enter Your Secret Message</h2>
+    <form action="/generate" method="post" enctype="multipart/form-data">
+        <label>Secret Message:</label>
+        <textarea name="message" required></textarea>
+
+        <label>Password (for authentication):</label>
+        <input type="password" name="password" required>
+
+        <label>Decoy Message:</label>
+        <textarea name="decoy_message" required></textarea>
+
+        <label>Upload File (PDF, DOC, Images):</label>
+        <input type="file" name="file" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.gif,.mp4,.avi,.mov,.mp3">
+
+        <br><br>
+        <button type="submit">Generate QR Code</button>
+    </form>
+</body>
+</html>
