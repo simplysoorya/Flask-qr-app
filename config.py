@@ -1,22 +1,31 @@
-import os
 from cryptography.fernet import Fernet
 import mysql.connector
+import os
 
-# Load MySQL credentials from environment variables
-MYSQL_HOST = os.environ.get("MYSQL_HOST", "localhost")
-MYSQL_USER = os.environ.get("MYSQL_USER", "root")
-MYSQL_PASSWORD = os.environ.get("MYSQL_PASSWORD", "root")
-MYSQL_DATABASE = os.environ.get("MYSQL_DATABASE", "secure_qr")
+# MySQL Database Configuration
+MYSQL_HOST = "localhost"      # Change this if your MySQL server is on a different host
+MYSQL_USER = "root"           # Your MySQL username
+MYSQL_PASSWORD = "root"  # Your MySQL password
+MYSQL_DATABASE = "secure_qr"  # Database name
 
-# Load secret key from environment variable
-SECRET_KEY = os.environ.get("SECRET_KEY")
-if not SECRET_KEY:
-    raise ValueError("SECRET_KEY not set in environment variables.")
+# Path to the secret key file
+KEY_FILE = r"E:\Python\secret.key"
 
-cipher = Fernet(SECRET_KEY.encode())
+def load_key():
+    """Load the encryption key from secret.key or raise an error if not found."""
+    if not os.path.exists(KEY_FILE):
+        raise FileNotFoundError(f"Secret key file not found at {KEY_FILE}. Make sure it exists.")
 
+    with open(KEY_FILE, "rb") as key_file:
+        return key_file.read()
+
+# Load the encryption key
+key = load_key()
+cipher = Fernet(key)
+
+# Database Connection Function
 def get_db_connection():
-    """Connect to the MySQL database using environment credentials."""
+    """Establishes a connection to the MySQL database."""
     return mysql.connector.connect(
         host=MYSQL_HOST,
         user=MYSQL_USER,
@@ -24,8 +33,9 @@ def get_db_connection():
         database=MYSQL_DATABASE
     )
 
+# Initialize Database (Run this once)
 def init_db():
-    """Initialize the database by creating the required table if not present."""
+    """Creates the database and table if they do not exist."""
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("""
