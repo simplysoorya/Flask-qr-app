@@ -9,7 +9,7 @@ from werkzeug.utils import secure_filename
 from user_agents import parse
 
 app = Flask(__name__)
-app.secret_key = "1c48b9bd05a8f25e7780f3ccaa61171e"
+app.secret_key = os.environ.get("SECRET_KEY", "fallback_key_for_dev_only")
 
 ALLOWED_EXTENSIONS = {'pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png', 'gif', 'mp4', 'mov', 'avi', 'mp3'}
 UPLOAD_FOLDER = 'uploads'
