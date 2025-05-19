@@ -1,31 +1,23 @@
-from cryptography.fernet import Fernet
-import psycopg2
 import os
+import psycopg2
+from cryptography.fernet import Fernet
 
-# PostgreSQL Database Configuration
-PG_HOST = "ep-floral-bar-a4jjzpk0-pooler.us-east-1.aws.neon.tech"
-PG_USER = "neondb_owner"
-PG_PASSWORD = "npg_McXUZL08JDOH"
-PG_DATABASE = "neondb"
+# Load DB config from environment
+PG_HOST = os.environ.get("PG_HOST")
+PG_USER = os.environ.get("PG_USER")
+PG_PASSWORD = os.environ.get("PG_PASSWORD")
+PG_DATABASE = os.environ.get("PG_DATABASE")
 
-# Path to the secret key file
-KEY_FILE = r"E:\Python\secret.key"
+# Secret key string from environment (used for Fernet)
+secret_key_str = os.environ.get("SECRET_KEY")
+cipher = Fernet(secret_key_str.encode())
 
 def load_key():
-    """Load the encryption key from secret.key or raise an error if not found."""
-    if not os.path.exists(KEY_FILE):
-        raise FileNotFoundError(f"Secret key file not found at {KEY_FILE}. Make sure it exists.")
+    """Load encryption key from env variable instead of file."""
+    return secret_key_str.encode()
 
-    with open(KEY_FILE, "rb") as key_file:
-        return key_file.read()
-
-# Load the encryption key
-key = load_key()
-cipher = Fernet(key)
-
-# Database Connection Function
 def get_db_connection():
-    """Establishes a connection to the PostgreSQL database."""
+    """Establish connection to Neon PostgreSQL DB."""
     return psycopg2.connect(
         host=PG_HOST,
         user=PG_USER,
