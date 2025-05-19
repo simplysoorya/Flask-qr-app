@@ -1,6 +1,7 @@
-from flask import Flask, render_template, request, send_from_directory
+from flask import Flask, render_template, request, send_from_directory, session, redirect, url_for
 import pyqrcode
 import os
+import time
 from datetime import datetime
 from cryptography.fernet import Fernet
 from config import load_key, get_db_connection
@@ -10,14 +11,11 @@ from user_agents import parse
 app = Flask(__name__)
 app.secret_key = "1c48b9bd05a8f25e7780f3ccaa61171e"
 
-# Allowed file extensions for upload
-ALLOWED_EXTENSIONS = {'pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png', 'gif', 'mp4', 'mov', 'avi','mp3'}
-
+ALLOWED_EXTENSIONS = {'pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png', 'gif', 'mp4', 'mov', 'avi', 'mp3'}
 UPLOAD_FOLDER = 'uploads'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
-# Load encryption key
 cipher = Fernet(load_key())
 
 def allowed_file(filename):
@@ -39,8 +37,6 @@ def generate_qr():
         filename = secure_filename(uploaded_file.filename)
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         uploaded_file.save(filepath)
-    else:
-        filepath = None
 
     encrypted_message = cipher.encrypt(message.encode()).decode()
     encrypted_password = cipher.encrypt(password.encode()).decode()
@@ -49,16 +45,15 @@ def generate_qr():
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute(
-        "INSERT INTO messages (encrypted_message, password, decoy_message, filename) VALUES (%s, %s, %s, %s)",
+        "INSERT INTO messages (encrypted_message, password, decoy_message, filename) VALUES (%s, %s, %s, %s) RETURNING id",
         (encrypted_message, encrypted_password, encrypted_decoy_message, filename)
     )
-    message_id = cursor.lastrowid
+    message_id = cursor.fetchone()[0]
     conn.commit()
     cursor.close()
     conn.close()
 
-    local_ip = "192.168.1.4"  # Replace with your local IP
-
+    local_ip = "192.168.1.4"  # Replace with your actual local IP
     qr_data = f"{decoy_message}\nCrypto World: http://{local_ip}:5000/decrypt/{message_id}"
     qr = pyqrcode.create(qr_data)
 
@@ -88,24 +83,33 @@ def decrypt_message(message_id):
         print(f"[ACCESS LOG] ID: {message_id} | IP: {visitor_ip} | Time: {access_time}")
         print(f"Device: {device_type} | OS: {os_info} | Browser: {browser_info} | Architecture: {architecture}")
 
-        cursor.execute(
-            """
+        cursor.execute("""
             UPDATE messages
             SET ip_address=%s, access_time=%s, device_type=%s, os_info=%s, browser_info=%s, architecture=%s
             WHERE id=%s AND ip_address IS NULL
-            """,
-            (visitor_ip, access_time, device_type, os_info, browser_info, architecture, message_id)
-        )
+        """, (visitor_ip, access_time, device_type, os_info, browser_info, architecture, message_id))
         conn.commit()
+
+    # Get session counters for this message
+    attempts_key = f"attempts_{message_id}"
+    block_time_key = f"block_time_{message_id}"
+
+    if attempts_key not in session:
+        session[attempts_key] = 0
 
     if request.method == "POST":
         entered_password = request.form["password"]
 
-        # PARAMETERIZED SELECT query
-        cursor.execute(
-            "SELECT encrypted_message, password, decoy_message, viewed, ip_address, access_time, filename FROM messages WHERE id=%s",
-            (message_id,)
-        )
+        # Check block time
+        if block_time_key in session:
+            block_until = session[block_time_key]
+            if time.time() < block_until:
+                return f"You are temporarily blocked due to multiple failed attempts. Try again after {int(block_until - time.time())} seconds."
+
+        cursor.execute("""
+            SELECT encrypted_message, password, decoy_message, viewed, ip_address, access_time, filename 
+            FROM messages WHERE id=%s
+        """, (message_id,))
         data = cursor.fetchone()
 
         if not data:
@@ -123,19 +127,34 @@ def decrypt_message(message_id):
             return "This message has already been viewed and self-destructed."
 
         if entered_password == stored_password:
+            session[attempts_key] += 1
+            if session[attempts_key] >= 6:
+                cursor.execute("DELETE FROM messages WHERE id=%s", (message_id,))
+                conn.commit()
+                cursor.close()
+                conn.close()
+                return "Too many attempts. Message has been deleted permanently."
+
             decrypted_message = cipher.decrypt(encrypted_message.encode()).decode()
-            cursor.execute("UPDATE messages SET viewed=1 WHERE id=%s", (message_id,))
+            cursor.execute("UPDATE messages SET viewed=TRUE WHERE id=%s", (message_id,))
             conn.commit()
             cursor.close()
             conn.close()
-
-            return render_template(
-                "message.html",
-                message=decrypted_message,
-                self_destruct=True,
-                filename=filename
-            )
+            return render_template("message.html", message=decrypted_message, self_destruct=True, filename=filename)
         else:
+            session[attempts_key] += 1
+
+            if session[attempts_key] == 3:
+                session[block_time_key] = time.time() + 180  # 3 minutes block
+                return "⚠️ You’ve entered the wrong password 3 times. Try again after 3 minutes."
+
+            if session[attempts_key] >= 6:
+                cursor.execute("DELETE FROM messages WHERE id=%s", (message_id,))
+                conn.commit()
+                cursor.close()
+                conn.close()
+                return "Too many failed attempts. Message deleted permanently."
+
             cursor.close()
             conn.close()
             return render_template("message.html", message=decoy_message, self_destruct=False)
