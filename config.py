@@ -1,12 +1,12 @@
 from cryptography.fernet import Fernet
-import mysql.connector
+import psycopg2
 import os
 
-# MySQL Database Configuration
-MYSQL_HOST = "localhost"      # Change this if your MySQL server is on a different host
-MYSQL_USER = "root"           # Your MySQL username
-MYSQL_PASSWORD = "root"  # Your MySQL password
-MYSQL_DATABASE = "secure_qr"  # Database name
+# PostgreSQL Database Configuration
+PG_HOST = "ep-floral-bar-a4jjzpk0-pooler.us-east-1.aws.neon.tech"
+PG_USER = "neondb_owner"
+PG_PASSWORD = "npg_McXUZL08JDOH"
+PG_DATABASE = "neondb"
 
 # Path to the secret key file
 KEY_FILE = r"E:\Python\secret.key"
@@ -25,31 +25,11 @@ cipher = Fernet(key)
 
 # Database Connection Function
 def get_db_connection():
-    """Establishes a connection to the MySQL database."""
-    return mysql.connector.connect(
-        host=MYSQL_HOST,
-        user=MYSQL_USER,
-        password=MYSQL_PASSWORD,
-        database=MYSQL_DATABASE
+    """Establishes a connection to the PostgreSQL database."""
+    return psycopg2.connect(
+        host=PG_HOST,
+        user=PG_USER,
+        password=PG_PASSWORD,
+        dbname=PG_DATABASE,
+        sslmode='require'
     )
-
-# Initialize Database (Run this once)
-def init_db():
-    """Creates the database and table if they do not exist."""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS messages (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            encrypted_message TEXT NOT NULL,
-            password TEXT NOT NULL,
-            decoy_message TEXT NOT NULL,
-            viewed BOOLEAN DEFAULT FALSE
-        )
-    """)
-    conn.commit()
-    cursor.close()
-    conn.close()
-
-# Run database initialization
-init_db()
