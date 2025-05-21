@@ -2,11 +2,16 @@ from flask import Flask, render_template, request, send_from_directory, session,
 import pyqrcode
 import os
 import time
+import smtplib
+from email.message import EmailMessage
 from datetime import datetime
 from cryptography.fernet import Fernet
-from config import load_key, get_db_connection
 from werkzeug.utils import secure_filename
 from user_agents import parse
+from dotenv import load_dotenv
+import psycopg2
+
+load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "fallback_key_for_dev_only")
@@ -16,7 +21,28 @@ UPLOAD_FOLDER = 'uploads'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
+EMAIL_ADDRESS = os.environ.get("EMAIL_ADDRESS", "your_email@gmail.com")
+EMAIL_PASSWORD = os.environ.get("EMAIL_PASSWORD")
+DATABASE_URL = os.environ.get("DATABASE_URL")
+
+LOCAL_SERVER_IP = "192.168.1.4"
+LOCAL_PORT = "5000"
+
+def load_key():
+    key_path = "secret.key"
+    if not os.path.exists(key_path):
+        key = Fernet.generate_key()
+        with open(key_path, "wb") as key_file:
+            key_file.write(key)
+    else:
+        with open(key_path, "rb") as key_file:
+            key = key_file.read()
+    return key
+
 cipher = Fernet(load_key())
+
+def get_db_connection():
+    return psycopg2.connect(DATABASE_URL)
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -53,8 +79,8 @@ def generate_qr():
     cursor.close()
     conn.close()
 
-    local_ip = "192.168.1.4"  # Replace with your actual local IP
-    qr_data = f"{decoy_message}\nCrypto World: http://{local_ip}:5000/decrypt/{message_id}"
+    qr_url = url_for("decrypt_message", message_id=message_id, _external=True)
+    qr_data = f"{decoy_message}\nCrypto World: {qr_url}"
     qr = pyqrcode.create(qr_data)
 
     qr_folder = "static"
@@ -62,7 +88,30 @@ def generate_qr():
     qr_path = os.path.join(qr_folder, f"qr_{message_id}.png")
     qr.png(qr_path, scale=8)
 
-    return render_template("qr_display.html", qr_code=qr_path, filename=filename)
+    return render_template("qr_display.html", qr_code=qr_path, filename=filename, qr_url=qr_url)
+
+@app.route("/send_email", methods=["POST"])
+def send_email():
+    to_email = request.form["email"]
+    qr_path = request.form["qr_path"]
+    qr_url = request.form["qr_url"]
+
+    send_qr_email(to_email, qr_path, qr_url)
+    return "✅ Email sent successfully!"
+
+def send_qr_email(to_email, qr_path, qr_url):
+    msg = EmailMessage()
+    msg['Subject'] = "Encrypted QR Message from Crypto World"
+    msg['From'] = EMAIL_ADDRESS
+    msg['To'] = to_email
+    msg.set_content(f"Scan the attached QR or visit the URL to view your secure message:\n\n{qr_url}")
+
+    with open(qr_path, 'rb') as img:
+        msg.add_attachment(img.read(), maintype='image', subtype='png', filename=os.path.basename(qr_path))
+
+    with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
+        smtp.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
+        smtp.send_message(msg)
 
 @app.route("/decrypt/<int:message_id>", methods=["GET", "POST"])
 def decrypt_message(message_id):
@@ -80,8 +129,13 @@ def decrypt_message(message_id):
         browser_info = f"{user_agent.browser.family} {user_agent.browser.version_string}"
         architecture = user_agent.device.brand or "Unknown"
 
-        print(f"[ACCESS LOG] ID: {message_id} | IP: {visitor_ip} | Time: {access_time}")
-        print(f"Device: {device_type} | OS: {os_info} | Browser: {browser_info} | Architecture: {architecture}")
+        print("\n[📥 QR Access Detected]")
+        print(f"🕒 Time        : {access_time}")
+        print(f"🌐 IP Address : {visitor_ip}")
+        print(f"📱 Device     : {device_type}")
+        print(f"🧠 OS         : {os_info}")
+        print(f"🌍 Browser    : {browser_info}")
+        print(f"🏗️ Architecture : {architecture}\n")
 
         cursor.execute("""
             UPDATE messages
@@ -90,7 +144,6 @@ def decrypt_message(message_id):
         """, (visitor_ip, access_time, device_type, os_info, browser_info, architecture, message_id))
         conn.commit()
 
-    # Get session counters for this message
     attempts_key = f"attempts_{message_id}"
     block_time_key = f"block_time_{message_id}"
 
@@ -100,67 +153,42 @@ def decrypt_message(message_id):
     if request.method == "POST":
         entered_password = request.form["password"]
 
-        # Check block time
-        if block_time_key in session:
-            block_until = session[block_time_key]
-            if time.time() < block_until:
-                return f"You are temporarily blocked due to multiple failed attempts. Try again after {int(block_until - time.time())} seconds."
+        if block_time_key in session and time.time() < session[block_time_key]:
+            return f"You are temporarily blocked. Try again in {int(session[block_time_key] - time.time())} seconds."
 
-        cursor.execute("""
-            SELECT encrypted_message, password, decoy_message, viewed, ip_address, access_time, filename 
-            FROM messages WHERE id=%s
-        """, (message_id,))
+        cursor.execute("SELECT encrypted_message, password, decoy_message, viewed, filename FROM messages WHERE id=%s", (message_id,))
         data = cursor.fetchone()
 
         if not data:
             cursor.close()
             conn.close()
-            return "Invalid QR Code or message does not exist."
+            return "Invalid QR Code."
 
-        encrypted_message, stored_password, encrypted_decoy_message, viewed, ip_address, access_time, filename = data
+        encrypted_message, stored_password, encrypted_decoy_message, viewed, filename = data
         stored_password = cipher.decrypt(stored_password.encode()).decode()
         decoy_message = cipher.decrypt(encrypted_decoy_message.encode()).decode()
 
         if viewed:
-            cursor.close()
-            conn.close()
             return "This message has already been viewed and self-destructed."
 
         if entered_password == stored_password:
-            session[attempts_key] += 1
-            if session[attempts_key] >= 6:
-                cursor.execute("DELETE FROM messages WHERE id=%s", (message_id,))
-                conn.commit()
-                cursor.close()
-                conn.close()
-                return "Too many attempts. Message has been deleted permanently."
-
             decrypted_message = cipher.decrypt(encrypted_message.encode()).decode()
             cursor.execute("UPDATE messages SET viewed=TRUE WHERE id=%s", (message_id,))
             conn.commit()
-            cursor.close()
-            conn.close()
             return render_template("message.html", message=decrypted_message, self_destruct=True, filename=filename)
         else:
             session[attempts_key] += 1
-
             if session[attempts_key] == 3:
-                session[block_time_key] = time.time() + 180  # 3 minutes block
-                return "⚠️ You’ve entered the wrong password 3 times. Try again after 3 minutes."
+                session[block_time_key] = time.time() + 180
+                return "⚠️ Wrong password 3 times. Wait 3 minutes."
 
             if session[attempts_key] >= 6:
                 cursor.execute("DELETE FROM messages WHERE id=%s", (message_id,))
                 conn.commit()
-                cursor.close()
-                conn.close()
-                return "Too many failed attempts. Message deleted permanently."
+                return "Too many failed attempts. Message deleted."
 
-            cursor.close()
-            conn.close()
             return render_template("message.html", message=decoy_message, self_destruct=False)
 
-    cursor.close()
-    conn.close()
     return render_template("auth.html", message_id=message_id)
 
 @app.route("/uploads/<filename>")
