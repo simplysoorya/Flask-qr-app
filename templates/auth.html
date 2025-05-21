@@ -1,11 +1,13 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Enter Password</title>
     <style>
         body {
-            background-color: #fce4ec; /* Light Pink */
-            font-family: Arial, sans-serif;
+            background-color: #fce4ec;
+            font-family: 'Segoe UI', sans-serif;
             text-align: center;
             padding: 20px;
         }
@@ -17,7 +19,7 @@
             border: 1px solid #ccc;
         }
         button {
-            background-color: #ff4081; /* Pink */
+            background-color: #ff4081;
             color: white;
             padding: 10px 15px;
             border: none;
@@ -32,9 +34,9 @@
 <body>
     <h2>Enter Password to View Message</h2>
     <form method="post">
-        <label>Password:</label>
-        <input type="password" name="password" required><br>
-        <button type="submit">Decrypt</button>
+        <label for="password">Password:</label><br>
+        <input type="password" name="password" id="password" required placeholder="Enter your password"><br>
+        <button type="submit">🔓 Decrypt</button>
     </form>
 </body>
 </html>
