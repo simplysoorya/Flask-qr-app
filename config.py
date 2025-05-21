@@ -1,27 +1,38 @@
 import os
-import psycopg2
 from cryptography.fernet import Fernet
+from dotenv import load_dotenv
+import psycopg2  # For Neon/PostgreSQL
 
-# Load DB config from environment
-PG_HOST = os.environ.get("PG_HOST")
-PG_USER = os.environ.get("PG_USER")
-PG_PASSWORD = os.environ.get("PG_PASSWORD")
-PG_DATABASE = os.environ.get("PG_DATABASE")
+# Load environment variables from .env file
+load_dotenv()
 
-# Secret key string from environment (used for Fernet)
-secret_key_str = os.environ.get("SECRET_KEY")
+# Retrieve values from .env
+secret_key_str = os.getenv("SECRET_KEY")
+EMAIL_ADDRESS = os.getenv("EMAIL_ADDRESS")
+EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
+DB_URL = os.getenv("DATABASE_URL")  # for Neon DB
+
+# Debug info
+print(f"Loaded SECRET_KEY: {secret_key_str}")
+print(f"Loaded EMAIL_ADDRESS: {EMAIL_ADDRESS}")
+print(f"Loaded DB_URL: {DB_URL}")
+
+# Validate secret key
+if secret_key_str is None:
+    raise ValueError("SECRET_KEY is missing from .env file.")
+
 cipher = Fernet(secret_key_str.encode())
 
+# Access the Fernet cipher from other files
 def load_key():
-    """Load encryption key from env variable instead of file."""
-    return secret_key_str.encode()
+    return cipher
 
+# PostgreSQL connection (Neon)
 def get_db_connection():
-    """Establish connection to Neon PostgreSQL DB."""
-    return psycopg2.connect(
-        host=PG_HOST,
-        user=PG_USER,
-        password=PG_PASSWORD,
-        dbname=PG_DATABASE,
-        sslmode='require'
-    )
+    if DB_URL is None:
+        raise ValueError("DATABASE_URL is missing in .env file.")
+    return psycopg2.connect(DB_URL)
+
+# Expose email credentials
+# You can hardcode the email if you prefer (since you said it should not be in HTML)
+EMAIL_ADDRESS = "sooryanarayana2004@gmail.com"
