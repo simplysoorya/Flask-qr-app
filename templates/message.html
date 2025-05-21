@@ -1,11 +1,13 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Message</title>
     <style>
         body {
-            background-color: #fff8e1; /* Light Yellow */
-            font-family: Arial, sans-serif;
+            background-color: #fff8e1;
+            font-family: 'Segoe UI', sans-serif;
             text-align: center;
             padding: 20px;
         }
@@ -27,7 +29,7 @@
 
     {% if filename %}
     <div class="file-link">
-        <h3>Attached File:</h3>
+        <h3>📎 Attached File:</h3>
         <a href="{{ url_for('uploaded_file', filename=filename) }}" target="_blank">{{ filename }}</a>
     </div>
     {% endif %}
@@ -38,7 +40,7 @@
     {% endif %}
 
     {% if self_destruct %}
-    <p><strong>Warning:</strong> This message has now been deleted and cannot be accessed again.</p>
+    <p><strong>⚠️ Warning:</strong> This message has now been deleted and cannot be accessed again.</p>
     {% endif %}
 </body>
 </html>
