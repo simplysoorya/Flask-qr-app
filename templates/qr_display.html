@@ -1,23 +1,81 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>QR Code</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Your QR Code</title>
     <style>
         body {
-            background-color: #e8f5e9; /* Light Green */
-            font-family: Arial, sans-serif;
+            font-family: 'Segoe UI', sans-serif;
             text-align: center;
-            padding: 20px;
+            padding: 30px;
+            background-color: #f3f4f6;
         }
+
         img {
-            margin-top: 20px;
-            border: 5px solid #4CAF50;
-            border-radius: 10px;
+            width: 250px;
+            height: 250px;
+        }
+
+        input {
+            padding: 10px;
+            margin-top: 10px;
+            width: 250px;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+        }
+
+        button {
+            padding: 10px 20px;
+            margin-top: 10px;
+            background-color: #10b981;
+            color: white;
+            border: none;
+            cursor: pointer;
+            border-radius: 5px;
+        }
+
+        button:hover {
+            background-color: #059669;
         }
     </style>
+    <script>
+        window.onload = function () {
+            const emailInput = document.getElementById("email");
+            const storedEmails = JSON.parse(localStorage.getItem("emails") || "[]");
+
+            emailInput.addEventListener("input", function () {
+                let suggestions = storedEmails.filter(e => e.startsWith(emailInput.value));
+                let datalist = document.getElementById("emailSuggestions");
+                datalist.innerHTML = "";
+                suggestions.forEach(e => {
+                    let option = document.createElement("option");
+                    option.value = e;
+                    datalist.appendChild(option);
+                });
+            });
+
+            document.getElementById("emailForm").addEventListener("submit", function () {
+                const email = emailInput.value;
+                if (!storedEmails.includes(email)) {
+                    storedEmails.push(email);
+                    localStorage.setItem("emails", JSON.stringify(storedEmails));
+                }
+                alert("QR code is being sent to " + email);
+            });
+        };
+    </script>
 </head>
 <body>
-    <h2>Scan this QR Code to retrieve your message</h2>
-    <img src="{{ qr_code }}" alt="QR Code">
+    <h2>📷 Your QR Code</h2>
+    <img src="{{ qr_code }}" alt="Generated QR Code"><br><br>
+
+    <form method="POST" action="/send_email" id="emailForm">
+        <input type="hidden" name="qr_path" value="{{ qr_code }}">
+        <input type="hidden" name="qr_url" value="{{ qr_url }}">
+        <input type="email" id="email" name="email" placeholder="Enter recipient email" required list="emailSuggestions">
+        <datalist id="emailSuggestions"></datalist><br>
+        <button type="submit">📧 Send QR to Email</button>
+    </form>
 </body>
 </html>
