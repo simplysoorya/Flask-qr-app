@@ -29,6 +29,7 @@ pycparser==2.22
 pyfingerprint==1.5
 PyJWT==2.9.0
 pypng==0.20220715.0
+psycopg2-binary==2.9.9
 PyQRCode==1.2.1
 pyserial==3.5
 PyYAML==6.0.2
