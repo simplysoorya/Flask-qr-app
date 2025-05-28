@@ -1,10 +1,11 @@
-from flask import Flask, render_template, request, send_from_directory, session, redirect, url_for
+# Entire qr.py with security improvements
+from flask import Flask, render_template, request, send_from_directory, session, redirect, url_for, abort, make_response
 import pyqrcode
 import os
 import time
 import smtplib
 from email.message import EmailMessage
-from datetime import datetime
+from datetime import datetime, timedelta
 from cryptography.fernet import Fernet
 from werkzeug.utils import secure_filename
 from user_agents import parse
@@ -25,9 +26,6 @@ EMAIL_ADDRESS = os.environ.get("EMAIL_ADDRESS", "your_email@gmail.com")
 EMAIL_PASSWORD = os.environ.get("EMAIL_PASSWORD")
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
-LOCAL_SERVER_IP = "192.168.1.4"
-LOCAL_PORT = "5000"
-
 def load_key():
     key_path = "secret.key"
     if not os.path.exists(key_path):
@@ -46,6 +44,11 @@ def get_db_connection():
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+@app.after_request
+def add_headers(response):
+    response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self'; style-src 'self';"
+    return response
 
 @app.route("/")
 def index():
@@ -67,12 +70,14 @@ def generate_qr():
     encrypted_message = cipher.encrypt(message.encode()).decode()
     encrypted_password = cipher.encrypt(password.encode()).decode()
     encrypted_decoy_message = cipher.encrypt(decoy_message.encode()).decode()
+    expiry_time = datetime.utcnow() + timedelta(hours=24)
 
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute(
-        "INSERT INTO messages (encrypted_message, password, decoy_message, filename) VALUES (%s, %s, %s, %s) RETURNING id",
-        (encrypted_message, encrypted_password, encrypted_decoy_message, filename)
+        """INSERT INTO messages (encrypted_message, password, decoy_message, filename, expiry_time)
+           VALUES (%s, %s, %s, %s, %s) RETURNING id""",
+        (encrypted_message, encrypted_password, encrypted_decoy_message, filename, expiry_time)
     )
     message_id = cursor.fetchone()[0]
     conn.commit()
@@ -95,7 +100,6 @@ def send_email():
     to_email = request.form["email"]
     qr_path = request.form["qr_path"]
     qr_url = request.form["qr_url"]
-
     send_qr_email(to_email, qr_path, qr_url)
     return "✅ Email sent successfully!"
 
@@ -105,10 +109,8 @@ def send_qr_email(to_email, qr_path, qr_url):
     msg['From'] = EMAIL_ADDRESS
     msg['To'] = to_email
     msg.set_content(f"Scan the attached QR or visit the URL to view your secure message:\n\n{qr_url}")
-
     with open(qr_path, 'rb') as img:
         msg.add_attachment(img.read(), maintype='image', subtype='png', filename=os.path.basename(qr_path))
-
     with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
         smtp.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
         smtp.send_message(msg)
@@ -118,24 +120,33 @@ def decrypt_message(message_id):
     conn = get_db_connection()
     cursor = conn.cursor()
 
+    cursor.execute("SELECT encrypted_message, password, decoy_message, viewed, filename, expiry_time FROM messages WHERE id=%s", (message_id,))
+    data = cursor.fetchone()
+
+    if not data:
+        cursor.close()
+        conn.close()
+        return "Invalid QR Code."
+
+    encrypted_message, stored_password, encrypted_decoy_message, viewed, filename, expiry_time = data
+
+    # Expiry check
+    if datetime.utcnow() > expiry_time:
+        cursor.execute("DELETE FROM messages WHERE id=%s", (message_id,))
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return "⚠️ This link has expired."
+
     if request.method == "GET":
         visitor_ip = request.remote_addr
         access_time = datetime.now()
         user_agent_str = request.headers.get('User-Agent', '')
         user_agent = parse(user_agent_str)
-
         device_type = user_agent.device.family
         os_info = f"{user_agent.os.family} {user_agent.os.version_string}"
         browser_info = f"{user_agent.browser.family} {user_agent.browser.version_string}"
         architecture = user_agent.device.brand or "Unknown"
-
-        print("\n[📥 QR Access Detected]")
-        print(f"🕒 Time        : {access_time}")
-        print(f"🌐 IP Address : {visitor_ip}")
-        print(f"📱 Device     : {device_type}")
-        print(f"🧠 OS         : {os_info}")
-        print(f"🌍 Browser    : {browser_info}")
-        print(f"🏗️ Architecture : {architecture}\n")
 
         cursor.execute("""
             UPDATE messages
@@ -154,17 +165,8 @@ def decrypt_message(message_id):
         entered_password = request.form["password"]
 
         if block_time_key in session and time.time() < session[block_time_key]:
-            return f"You are temporarily blocked. Try again in {int(session[block_time_key] - time.time())} seconds."
+            return f"Temporarily blocked. Try again in {int(session[block_time_key] - time.time())} seconds."
 
-        cursor.execute("SELECT encrypted_message, password, decoy_message, viewed, filename FROM messages WHERE id=%s", (message_id,))
-        data = cursor.fetchone()
-
-        if not data:
-            cursor.close()
-            conn.close()
-            return "Invalid QR Code."
-
-        encrypted_message, stored_password, encrypted_decoy_message, viewed, filename = data
         stored_password = cipher.decrypt(stored_password.encode()).decode()
         decoy_message = cipher.decrypt(encrypted_decoy_message.encode()).decode()
 
@@ -193,6 +195,20 @@ def decrypt_message(message_id):
 
 @app.route("/uploads/<filename>")
 def uploaded_file(filename):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT viewed, expiry_time FROM messages WHERE filename=%s", (filename,))
+    data = cursor.fetchone()
+    cursor.close()
+    conn.close()
+
+    if not data:
+        abort(404)
+
+    viewed, expiry_time = data
+    if viewed or datetime.utcnow() > expiry_time:
+        return "⛔ File is no longer available."
+
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
 if __name__ == "__main__":
