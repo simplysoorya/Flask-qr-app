@@ -1,9 +1,10 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Message</title>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self';" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Secure Message</title>
     <style>
         body {
             background-color: #fff8e1;
@@ -21,7 +22,32 @@
         .file-link {
             margin-top: 20px;
         }
+        /* Disabled link styling */
+        .disabled-link {
+            pointer-events: none; /* Disable clicks */
+            color: grey;
+            cursor: default;
+            text-decoration: none;
+            font-style: italic;
+        }
     </style>
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            // Block context menu (right click)
+            document.addEventListener("contextmenu", e => e.preventDefault());
+            // Block Print Screen key
+            document.addEventListener("keydown", e => {
+                if (e.key === "PrintScreen") {
+                    // Overwrite clipboard and alert user
+                    if (navigator.clipboard) {
+                        navigator.clipboard.writeText("Screenshots are disabled for security.");
+                    }
+                    alert("⚠️ Screenshot disabled.");
+                    e.preventDefault();
+                }
+            });
+        });
+    </script>
 </head>
 <body>
     <h2>Your Message:</h2>
@@ -30,13 +56,8 @@
     {% if filename %}
     <div class="file-link">
         <h3>📎 Attached File:</h3>
-        <a href="{{ url_for('uploaded_file', filename=filename) }}" target="_blank">{{ filename }}</a>
+        <span class="disabled-link">{{ filename }}</span>
     </div>
-    {% endif %}
-
-    {% if ip_address and access_time %}
-    <p><strong>Accessed from IP:</strong> {{ ip_address }}</p>
-    <p><strong>Accessed on:</strong> {{ access_time }}</p>
     {% endif %}
 
     {% if self_destruct %}
